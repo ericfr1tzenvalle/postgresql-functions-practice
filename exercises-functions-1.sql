@@ -131,88 +131,310 @@ INSERT INTO LOCACAO (CODDVD,CODCLIENTE,DATA_LOCACAO, DATA_DEVOLUCAO) VALUES(6,2,
 INSERT INTO LOCACAO (CODDVD,CODCLIENTE,DATA_LOCACAO, DATA_DEVOLUCAO) VALUES(8,2,current_date,null);
 
 
--- 1) Imprima todos os números naturais de 1 à 20 dizendo se o número é "par" ou "ímpar".
+-- ==========================================================
+-- 1️⃣ list_num_par(a int) - Exibe se cada número de 0 até a-1
+-- é par ou ímpar.
+-- ==========================================================
+CREATE OR REPLACE FUNCTION list_num_par(a int) RETURNS void AS
+$$
+DECLARE
+    x int := 0;
+BEGIN
+    WHILE x < a LOOP
+        IF x % 2 = 0 THEN
+            RAISE NOTICE '% é par', x;
+        ELSE
+            RAISE NOTICE '% é ímpar', x;
+        END IF;
 
+        x := x + 1;
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;
 
+-- ==========================================================
+-- 2️⃣ list_tabuada(num int) - Exibe a tabuada de 0 a 10 para
+-- números entre 0 e 9.
+-- ==========================================================
+CREATE OR REPLACE FUNCTION list_tabuada(num int) RETURNS void AS
+$$
+DECLARE
+    x int := 0;
+BEGIN
+    IF num >= 0 AND num < 10 THEN
+        WHILE x <= 10 LOOP
+            RAISE NOTICE '% x % = %', num, x, num * x;
+            x := x + 1;
+        END LOOP;
+    ELSE
+        RAISE EXCEPTION 'Numero fora do intervalo (0–9)';
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
 
+-- ==========================================================
+-- 3️⃣ list_fatorial(num int) - Exibe o fatorial de num.
+-- ==========================================================
+CREATE OR REPLACE FUNCTION list_fatorial(num int) RETURNS void AS
+$$
+DECLARE
+    resultado bigint := 1;
+    i int;
+BEGIN
+    IF num < 0 THEN
+        RAISE EXCEPTION 'Fatorial não existe para números negativos!';
+    END IF;
 
+    FOR i IN 2..num LOOP
+        resultado := resultado * i;
+    END LOOP;
 
--- 2) Faça uma função que dado um parâmetro de um número de 0 à 9, imprima a sua tabuada. Caso o número não esteja entre
--- 0 e 9, imprima uma mensagem de erro. Utilize “RAISE EXCEPTION”.
--- exemplo: número  2
--- 2x0=0
--- 2x1=2
--- 2x2=4
--- 2x3=6
--- ...
+    RAISE NOTICE '%! = %', num, resultado;
+END;
+$$ LANGUAGE plpgsql;
 
+-- ==========================================================
+-- 4️⃣ del_cliente(cod int) - Exclui cliente e retorna TRUE
+-- se excluído ou FALSE se não encontrado.
+-- ==========================================================
+CREATE OR REPLACE FUNCTION del_cliente(cod int) RETURNS boolean AS
+$$
+BEGIN
+    DELETE FROM cliente
+    WHERE codcliente = cod;
 
+    IF FOUND THEN
+        RETURN TRUE;
+    ELSE
+        RETURN FALSE;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
 
+-- ==========================================================
+-- 5️⃣ inserir_cliente(...) - Insere cliente e retorna seu cod.
+-- ==========================================================
+CREATE OR REPLACE FUNCTION inserir_cliente(
+    p_nome varchar,
+    p_email varchar,
+    p_telefone varchar
+) RETURNS integer AS
+$$
+DECLARE
+    v_cod integer;
+BEGIN
+    INSERT INTO cliente (nome, email, telefone)
+    VALUES (p_nome, p_email, p_telefone)
+    RETURNING codcliente INTO v_cod;
 
--- 3) Faça uma função que imprima toda a tabuada em tela no seguinte formato (tente utilizar a função anterior):
--- 1 x 0 = 0
--- 1 x 1 = 1
--- ...
--- 9 x 9 = 81
--- 9 x 10 = 90
+    RETURN v_cod;
+END;
+$$ LANGUAGE plpgsql;
 
+-- ==========================================================
+-- 6️⃣ insere_cliente(...) - Insere cliente e retorna TRUE.
+-- Dispara EXCEPTION se o CPF informado estiver registrado.
+-- ==========================================================
+CREATE OR REPLACE FUNCTION insere_cliente (
+    p_nome VARCHAR,
+    p_endereco VARCHAR,
+    p_telefone VARCHAR,
+    p_data_nasc DATE,
+    p_cpf VARCHAR
+) RETURNS BOOLEAN AS $$
+DECLARE
+    v_existente BOOLEAN;
+BEGIN
+    SELECT EXISTS(SELECT 1 FROM cliente WHERE cpf = p_cpf) INTO v_existente;
 
+    IF v_existente THEN
+        RAISE EXCEPTION 'Cliente ja existe com cpf';
+    ELSE
+        INSERT INTO cliente (nome_cliente, endereco, telefone, data_nasc, cpf)
+        VALUES (p_nome, p_endereco, p_telefone, p_data_nasc, p_cpf);
+        RETURN TRUE;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
 
+-- ==========================================================
+-- 7️⃣ list_categoria(f_nome_categoria) - Exibe a quantidade
+-- de filmes e DVDs para uma categoria específica.
+-- ==========================================================
+CREATE OR REPLACE FUNCTION list_categoria(f_nome_categoria varchar) RETURNS void AS
+$$
+DECLARE
+    existe boolean;
+    total_filmes int;
+    total_dvds int;
+BEGIN
+    SELECT EXISTS (
+        SELECT 1 
+        FROM categoria 
+        WHERE nome_categoria = f_nome_categoria
+    ) INTO existe;
 
--- 4) Faça uma função que calcule e retorne o fatorial de um número.
--- Lista PLpgSQL com BD
--- Deve ser utilizado o script presente no moodle. Esse irá gerar as seguintes tabelas:
--- CLIENTES (codCliente, nome_cliente, endereco, telefone, data_nasc, cpf);
--- CATEGORIA (codCategoria, nome_categoria) //drama, ação, aventura, comédia, terror
--- FILME (codFilme, nome_filme, codCategoria, diaria);
--- codCategoria referencia CATEGORIA
--- STATUS (codStatus, nome_status) // locado, disponível, reservado
--- DVD (codDVD, codFilme, codStatus)
--- LOCACAO (codLocacao, codDVD, codCliente, data_locacao, data_devolucao);
--- RESERVA (codReserva, codDVD, codCliente, data_reserva, data_validade);
+    IF NOT existe THEN
+        RAISE EXCEPTION 'Não existe essa categoria';
+    ELSE
+        SELECT COUNT(DISTINCT f.codfilme), COUNT(DISTINCT d.codfilme)
+        INTO total_filmes, total_dvds
+        FROM filme AS f
+        LEFT JOIN dvd AS d ON d.codfilme = f.codfilme
+        INNER JOIN categoria AS c ON c.codcategoria = f.codcategoria
+        WHERE c.nome_categoria = f_nome_categoria;
 
+        RAISE NOTICE 'Categoria: %, Filmes: %, DVDs: %',
+            f_nome_categoria, total_filmes, total_dvds;
+    END IF;
 
+END;
+$$ LANGUAGE plpgsql;
 
--- 5) Faça uma função que apaga um cliente de código x que deve ser passado como parâmetro.
+-- ==========================================================
+-- 8️⃣ filme_mais_locado() - Retorna o nome do filme mais locado.
+-- ==========================================================
+CREATE OR REPLACE FUNCTION filme_mais_locado()
+RETURNS varchar AS
+$$
+DECLARE
+    nome_resultado varchar;
+BEGIN
+    SELECT f.nome_filme
+      INTO nome_resultado
+      FROM locacao AS l
+      INNER JOIN filme AS f ON f.codfilme = l.codfilme
+      GROUP BY f.nome_filme
+      ORDER BY COUNT(*) DESC
+      LIMIT 1;
 
+    RETURN nome_resultado;
+END;
+$$ LANGUAGE plpgsql;
 
+-- ==========================================================
+-- 9️⃣ qtd_dvds_cliente(f_nome_cliente) - Retorna quantos DVDs
+-- foram locados por todos clientes com o nome especificado.
+-- ==========================================================
+CREATE OR REPLACE FUNCTION qtd_dvds_cliente(f_nome_cliente VARCHAR) 
+RETURNS integer AS
+$$
+DECLARE
+    total integer;
+BEGIN
+    SELECT COUNT(*)
+      INTO total
+      FROM locacao AS l
+      INNER JOIN cliente AS c ON c.codcliente = l.codcliente
+      WHERE c.nome_cliente = f_nome_cliente;
 
+    RETURN total;
+END;
+$$ LANGUAGE plpgsql;
 
--- 6) Faça uma função que insere um cliente, os parâmetros necessários devem ser passados (com exceção do código do
--- cliente).
+-- ==========================================================
+-- 🔟 inserir_locacao(f_nome_filme, f_nome_cliente) - Insere
+-- uma locação e retorna TRUE (sucesso) ou FALSE (sem DVD).
+-- ==========================================================
+CREATE OR REPLACE FUNCTION inserir_locacao(f_nome_filme VARCHAR, f_nome_cliente VARCHAR) 
+RETURNS boolean AS
+$$
+DECLARE
+    v_codcliente integer;
+    v_coddvd integer;
+BEGIN
+    SELECT codcliente INTO v_codcliente
+      FROM cliente
+      WHERE nome_cliente = f_nome_cliente
+      LIMIT 1;
 
+    IF v_codcliente IS NULL THEN
+        RAISE NOTICE 'Cliente "%" não encontrado.', f_nome_cliente;
+        RETURN FALSE;
+    END IF;
 
+    SELECT d.coddvd
+      INTO v_coddvd
+      FROM dvd d
+      INNER JOIN filme f ON f.codfilme = d.codfilme
+      WHERE f.nome_filme = f_nome_filme
+        AND d.status = 'disponivel'
+      LIMIT 1;
 
+    IF v_coddvd IS NULL THEN
+        RETURN FALSE;
+    END IF;
 
--- 7) Faça uma função que imprima o número de filmes e dvds disponíveis de uma categoria X. Onde X é o parâmetro.
+    INSERT INTO locacao (codcliente, coddvd, data_locacao) 
+    VALUES (v_codcliente, v_coddvd, CURRENT_DATE);
 
+    UPDATE dvd
+       SET status = 'locado'
+       WHERE coddvd = v_coddvd;
 
+    RETURN TRUE;
+END;
+$$ LANGUAGE plpgsql;
 
+-- ==========================================================
+-- 1️⃣1️⃣ inserir_locacao_ex(f_nome_filme, f_nome_cliente) -
+-- Insere locação e gera EXCEPTION se não houver DVD disponível.
+-- ==========================================================
+CREATE OR REPLACE FUNCTION inserir_locacao_ex(f_nome_filme VARCHAR, f_nome_cliente VARCHAR) 
+RETURNS void AS
+$$
+DECLARE
+    v_codcliente integer;
+    v_coddvd integer;
+BEGIN
+    SELECT codcliente INTO v_codcliente
+      FROM cliente
+      WHERE nome_cliente = f_nome_cliente
+      LIMIT 1;
 
--- 8) Faça uma função que retorne o nome do filme mais locado.
+    IF v_codcliente IS NULL THEN
+        RAISE EXCEPTION 'Cliente "%" não encontrado.', f_nome_cliente;
+    END IF;
 
+    SELECT d.coddvd
+      INTO v_coddvd
+      FROM dvd d
+      INNER JOIN filme f ON f.codfilme = d.codfilme
+      WHERE f.nome_filme = f_nome_filme
+        AND d.status = 'disponivel'
+      LIMIT 1;
 
+    IF v_coddvd IS NULL THEN
+        RAISE EXCEPTION 'Nenhum DVD disponível para o filme "%".', f_nome_filme;
+    END IF;
 
+    INSERT INTO locacao (codcliente, coddvd, data_locacao) 
+    VALUES (v_codcliente, v_coddvd, CURRENT_DATE);
 
--- 9) Fazer uma função que receba como parâmetro o nome de um cliente e retorne a quantidade de DVDs locados por ele. E se
--- existirem dois clientes com o mesmo nome?
+    UPDATE dvd
+       SET status = 'locado'
+       WHERE coddvd = v_coddvd;
 
+END;
+$$ LANGUAGE plpgsql;
 
-
-
--- 10) Faça um procedimento que insere um item na tabela Locação, passe como parâmetro apenas o nome do filme e o nome do
--- cliente. Para a data de locação utilize a data atual do sistema. Não esqueça de alterar o status para locado. A função deve
--- retornar verdadeiro ou falso caso consiga efetuar a locação (tenha algum DVD disponível)
-
-
-
-
--- 11) Refaça o exercício anterior, agora gerando criando uma exceção, caso o filme solicitado não tenha nenhum dvd disponível.
-
-
-
-
--- 12) Faça um procedimento que altere o status dos DVDs com reserva vencida. Isso só deve ser feito se o status do DVD está
--- reservado. Não se esqueça que um DVD pode estar reservado e já ter sido reservado outras vezes e obviamente apenas a
--- última reserva é que não estará vencida e com isso o DVD não deverá ter seu status modificado.
+-- ==========================================================
+-- 1️⃣2️⃣ atualiza_status_dvds() - Altera status para 'disponivel'
+-- de DVDs com reserva vencida.
+-- ==========================================================
+CREATE OR REPLACE PROCEDURE atualiza_status_dvds() AS
+$$
+BEGIN
+    UPDATE dvd d
+       SET status = 'disponivel'
+      WHERE status = 'reservado'
+        AND EXISTS (
+            SELECT 1
+              FROM reserva r
+             WHERE r.coddvd = d.coddvd
+             GROUP BY r.coddvd
+            HAVING MAX(r.data_validade) < CURRENT_DATE
+        );
+END;
+$$ LANGUAGE plpgsql;
 
